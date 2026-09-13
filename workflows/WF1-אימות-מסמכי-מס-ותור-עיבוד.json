@@ -1,0 +1,57 @@
+{
+  "name": "WF1 - אימות מסמכי מס ותור עיבוד",
+  "active": true,
+  "id": "TW5beBDe2xOQnvGs",
+  "settings": { "executionOrder": "v1", "availableInMCP": true, "binaryMode": "separate" },
+  "connections": {
+    "טופס - העלאת מסמך לאימות": { "main": [[{ "node": "ניתוח מסמך (AI Vision)", "type": "main", "index": 0 }]] },
+    "ניתוח מסמך (AI Vision)": { "main": [[{ "node": "פענוח שדות מהמסמך", "type": "main", "index": 0 }]] },
+    "פענוח שדות מהמסמך": { "main": [[{ "node": "בדיקת כפילות מספר חשבונית", "type": "main", "index": 0 }]] },
+    "בדיקת כפילות מספר חשבונית": { "main": [[{ "node": "אימות כללים עסקיים", "type": "main", "index": 0 }]] },
+    "אימות כללים עסקיים": { "main": [[{ "node": "האם המסמך תקין?", "type": "main", "index": 0 }]] },
+    "האם המסמך תקין?": { "main": [[{ "node": "הזנת חשבונית לתור עיבוד", "type": "main", "index": 0 }], [{ "node": "התראת כשל אימות למנהל", "type": "main", "index": 0 }]] },
+    "הזנת חשבונית לתור עיבוד": { "main": [[{ "node": "עדכון הצלחה למנהל", "type": "main", "index": 0 }, { "node": "הפעלת הפקת חשבונית (WF8)", "type": "main", "index": 0 }]] }
+  },
+  "nodes": [
+    {
+      "parameters": { "formTitle": "אימות חשבונית - איי.איי אלקטרוניקה", "formDescription": "העלו תמונה ברורה של החשבונית (JPG/PNG בלבד, לא PDF). המערכת תחלץ את הנתונים ותאמת אותם אוטומטית.", "formFields": { "values": [{ "fieldLabel": "תמונת החשבונית", "fieldType": "file", "fieldName": "document", "multipleFiles": false, "acceptFileTypes": ".jpg,.jpeg,.png", "requiredField": true }] }, "options": {} },
+      "id": "16471219-b739-45da-ad6b-d399e0c884c7", "name": "טופס - העלאת מסמך לאימות", "type": "n8n-nodes-base.formTrigger", "typeVersion": 2.6, "position": [0, 96], "webhookId": "e1d7b0c1-4c2a-4c33-873a-9032eed3cce9"
+    },
+    {
+      "parameters": { "resource": "image", "operation": "analyze", "modelId": { "__rl": true, "mode": "list", "value": "gpt-4o", "cachedResultName": "gpt-4o" }, "text": "זוהי תמונה של חשבונית מס עסקית. חלץ ממנה את הנתונים הבאים בדיוק כפי שהם מופיעים במסמך (ללא עיגול, ללא ניחוש, ללא תוספת מידע). החזר אך ורק אובייקט JSON תקני, ללא טקסט נוסף וללא markdown code fences, בפורמט הבא:\n{\"invoiceNumber\": \"מספר החשבונית כמחרוזת, או null אם לא נמצא\", \"customerId\": \"שם/מספר הלקוח המצוין בחשבונית, או null\", \"invoiceDate\": \"תאריך בפורמט YYYY-MM-DD, או null\", \"amount\": מספר - הסכום לפני מע\"מ (ללא סימן מטבע), \"vatAmount\": מספר - סכום המע\"מ, \"total\": מספר - הסכום הכולל כולל מע\"מ}\nאם שדה מספרי לא ניתן לזיהוי ברור החזר null עבורו במקום לנחש.", "inputType": "base64", "binaryPropertyName": "document", "options": { "detail": "high", "maxTokens": 500 } },
+      "id": "2f595504-c133-416c-8d82-ad40d87a5e42", "name": "ניתוח מסמך (AI Vision)", "type": "@n8n/n8n-nodes-langchain.openAi", "typeVersion": 2.3, "position": [224, 96], "credentials": { "openAiApi": { "id": "1ojDk4MHeyANbxVd", "name": "OpenAI account" } }
+    },
+    {
+      "parameters": { "mode": "runOnceForEachItem", "jsCode": "const j = $json;\nlet raw;\n\n// OpenAI Responses API returns an array like: [{ content: [{ type: 'output_text', text: '...' }] }]\nif (Array.isArray(j) && j[0] && Array.isArray(j[0].content)) {\n  const part = j[0].content.find(c => c.type === 'output_text') || j[0].content[0];\n  raw = part && part.text;\n} else if (j && Array.isArray(j.content)) {\n  const part = j.content.find(c => c.type === 'output_text') || j.content[0];\n  raw = part && (part.text ?? part);\n} else {\n  raw = j.content ?? j.text ?? j.message ?? (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) ?? JSON.stringify(j);\n}\n\nif (typeof raw !== 'string') raw = JSON.stringify(raw);\nraw = raw.trim();\nif (raw.startsWith('```')) {\n  raw = raw.replace(/^```[a-zA-Z]*\\n?/, '').replace(/```\\s*$/, '').trim();\n}\n\nlet parsed = {};\nlet parseError = null;\ntry {\n  parsed = JSON.parse(raw);\n} catch (e) {\n  parseError = 'AI לא החזיר JSON תקין: ' + e.message;\n}\n\nreturn {\n  json: {\n    invoiceNumber: parsed.invoiceNumber ?? null,\n    customerId: parsed.customerId ?? null,\n    invoiceDate: parsed.invoiceDate ?? null,\n    amount: (typeof parsed.amount === 'number') ? parsed.amount : null,\n    vatAmount: (typeof parsed.vatAmount === 'number') ? parsed.vatAmount : null,\n    total: (typeof parsed.total === 'number') ? parsed.total : null,\n    parseError,\n    rawAiResponse: raw\n  }\n};" },
+      "id": "e33080d2-6cbf-4e7f-8cd9-dfe0f758ae8d", "name": "פענוח שדות מהמסמך", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [448, 96]
+    },
+    {
+      "parameters": { "authentication": "airtableOAuth2Api", "operation": "search", "base": { "__rl": true, "mode": "id", "value": "appQGJKlLbmTFZogL", "cachedResultName": "ERP-AI" }, "table": { "__rl": true, "mode": "id", "value": "tbleIonyZdXG64ee3", "cachedResultName": "Invoices" }, "filterByFormula": "={{ \"{InvoiceNumber} = '\" + ($('פענוח שדות מהמסמך').item.json.invoiceNumber || '').toString().replace(/'/g, \"\\\\'\") + \"'\" }}", "returnAll": false, "limit": 1, "options": {} },
+      "id": "a63e836c-a4ec-4e8f-950d-9f44677ad003", "name": "בדיקת כפילות מספר חשבונית", "type": "n8n-nodes-base.airtable", "typeVersion": 2.2, "position": [672, 96], "alwaysOutputData": true, "credentials": { "airtableOAuth2Api": { "id": "eU4m4ZLdhK7wssY1", "name": "Airtable account" } }
+    },
+    {
+      "parameters": { "mode": "runOnceForEachItem", "jsCode": "const doc = $('פענוח שדות מהמסמך').item.json;\nconst dup = $json;\nconst errors = [];\n\nif (doc.parseError) {\n  errors.push(doc.parseError);\n}\n\nconst required = ['invoiceNumber', 'invoiceDate', 'amount', 'vatAmount', 'total'];\nfor (const f of required) {\n  if (doc[f] === null || doc[f] === undefined || doc[f] === '') {\n    errors.push('שדה חסר או לא זוהה: ' + f);\n  }\n}\n\nif (typeof doc.amount === 'number' && typeof doc.vatAmount === 'number' && typeof doc.total === 'number') {\n  if (doc.amount <= 0 || doc.vatAmount < 0 || doc.total <= 0) {\n    errors.push('סכומים לא הגיוניים (שליליים או אפס)');\n  }\n  const expectedVat = Math.round(doc.amount * 0.18 * 100) / 100;\n  if (Math.abs(expectedVat - doc.vatAmount) > 1) {\n    errors.push('חישוב מע\"מ לא תואם: צפוי כ-₪' + expectedVat + ' (18%), במסמך ₪' + doc.vatAmount);\n  }\n  const expectedTotal = Math.round((doc.amount + doc.vatAmount) * 100) / 100;\n  if (Math.abs(expectedTotal - doc.total) > 1) {\n    errors.push('סכום כולל לא תואם: צפוי ₪' + expectedTotal + ', במסמך ₪' + doc.total);\n  }\n}\n\nif (doc.invoiceDate) {\n  const d = new Date(doc.invoiceDate);\n  if (isNaN(d.getTime())) {\n    errors.push('תאריך לא תקין: ' + doc.invoiceDate);\n  } else if (d.getTime() > Date.now() + 24 * 60 * 60 * 1000) {\n    errors.push('תאריך המסמך בעתיד');\n  }\n}\n\nif (dup && dup.id) {\n  errors.push('מספר חשבונית ' + doc.invoiceNumber + ' כבר קיים במערכת (רשומה: ' + dup.id + ')');\n}\n\nreturn {\n  json: {\n    invoiceNumber: doc.invoiceNumber,\n    customerId: doc.customerId,\n    invoiceDate: doc.invoiceDate,\n    amount: doc.amount,\n    vatAmount: doc.vatAmount,\n    total: doc.total,\n    isValid: errors.length === 0,\n    validationErrors: errors\n  }\n};" },
+      "id": "906b95a8-ae76-47f1-bbf2-8ed44011f9cc", "name": "אימות כללים עסקיים", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [896, 96]
+    },
+    {
+      "parameters": { "conditions": { "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2 }, "conditions": [{ "leftValue": "={{ $json.isValid }}", "operator": { "type": "boolean", "operation": "true", "singleValue": true }, "rightValue": true }], "combinator": "and" }, "options": {} },
+      "id": "e1e7d643-b658-4be3-a90a-d0c5e851650d", "name": "האם המסמך תקין?", "type": "n8n-nodes-base.if", "typeVersion": 2.3, "position": [1120, 96]
+    },
+    {
+      "parameters": { "authentication": "airtableOAuth2Api", "operation": "create", "base": { "__rl": true, "mode": "id", "value": "appQGJKlLbmTFZogL", "cachedResultName": "ERP-AI" }, "table": { "__rl": true, "mode": "id", "value": "tbleIonyZdXG64ee3", "cachedResultName": "Invoices" }, "columns": { "mappingMode": "defineBelow", "matchingColumns": [], "value": { "InvoiceNumber": "={{ $json.invoiceNumber }}", "CustomerId": "={{ $json.customerId }}", "Amount": "={{ $json.amount }}", "VatAmount": "={{ $json.vatAmount }}", "Total": "={{ $json.total }}", "Status": "מוכן לעיבוד" }, "schema": [] }, "options": {} },
+      "id": "c3bb3768-caa9-40c5-9a5d-570b6daf83a4", "name": "הזנת חשבונית לתור עיבוד", "type": "n8n-nodes-base.airtable", "typeVersion": 2.2, "position": [1344, 0], "credentials": { "airtableOAuth2Api": { "id": "eU4m4ZLdhK7wssY1", "name": "Airtable account" } }
+    },
+    {
+      "parameters": { "chatId": "8934206241", "text": "=✅ חשבונית אומתה אוטומטית ונכנסה לתור עיבוד:\n\n🧾 מספר: {{ $('אימות כללים עסקיים').item.json.invoiceNumber }}\n👤 לקוח: {{ $('אימות כללים עסקיים').item.json.customerId || 'לא זוהה' }}\n📅 תאריך: {{ $('אימות כללים עסקיים').item.json.invoiceDate }}\n💰 סכום: ₪{{ $('אימות כללים עסקיים').item.json.amount }} + מע\"מ ₪{{ $('אימות כללים עסקיים').item.json.vatAmount }} = ₪{{ $('אימות כללים עסקיים').item.json.total }}", "additionalFields": { "appendAttribution": false } },
+      "id": "fd3d1c54-964b-4b19-ad92-99aa9f374cc5", "name": "עדכון הצלחה למנהל", "type": "n8n-nodes-base.telegram", "typeVersion": 1.2, "position": [1568, 0], "webhookId": "c86eff35-3531-4cb1-ae05-c76d4d70bc33", "credentials": { "telegramApi": { "id": "XcIUCaQRDKHECk6U", "name": "Telegram account" } }
+    },
+    {
+      "parameters": { "chatId": "8934206241", "text": "=⚠️ מסמך שהועלה לא עבר אימות אוטומטי ולא נכנס למערכת. נדרשת בדיקה ידנית:\n\n🧾 מספר שזוהה: {{ $json.invoiceNumber || 'לא זוהה' }}\n👤 לקוח: {{ $json.customerId || 'לא זוהה' }}\n\nבעיות שנמצאו:\n{{ $json.validationErrors.map(e => '• ' + e).join('\\n') }}", "additionalFields": { "appendAttribution": false } },
+      "id": "6259f2f6-31f5-48b5-a669-93f49b8bf112", "name": "התראת כשל אימות למנהל", "type": "n8n-nodes-base.telegram", "typeVersion": 1.2, "position": [1344, 192], "webhookId": "dc8df4b2-ba36-4d5d-b8ed-db71f1548125", "credentials": { "telegramApi": { "id": "XcIUCaQRDKHECk6U", "name": "Telegram account" } }
+    },
+    {
+      "parameters": { "workflowId": { "__rl": true, "mode": "id", "value": "pfS0CxKJPB4Yf2FN", "cachedResultName": "WF8 - הפקת חשבונית ושליחה ללקוח" }, "workflowInputs": { "mappingMode": "defineBelow", "value": { "recordId": "={{ $json.id }}", "InvoiceNumber": "={{ $('אימות כללים עסקיים').item.json.invoiceNumber }}", "CustomerId": "={{ $('אימות כללים עסקיים').item.json.customerId }}", "Amount": "={{ $('אימות כללים עסקיים').item.json.amount }}", "VatAmount": "={{ $('אימות כללים עסקיים').item.json.vatAmount }}", "Total": "={{ $('אימות כללים עסקיים').item.json.total }}" }, "matchingColumns": [], "schema": [], "attemptToConvertTypes": false, "convertFieldsToString": true }, "options": { "waitForSubWorkflow": false } },
+      "id": "dd557aba-3cc5-4f98-8d9a-bc558b989efb", "name": "הפעלת הפקת חשבונית (WF8)", "type": "n8n-nodes-base.executeWorkflow", "typeVersion": 1.2, "position": [1664, 240]
+    }
+  ]
+}

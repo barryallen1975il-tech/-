@@ -1,0 +1,22 @@
+{
+  "name": "WF6 - מאגר ידע מדיניות (RAG)",
+  "active": false,
+  "id": "e8TyVJDy5rQRN5G9",
+  "_note": "Manually-triggered ingestion workflow: loads the full company-policy text into an n8n in-memory vector store (ai_electronics_policy_kb) used as a tool by WF5. Inactive by design (run once/on-demand to (re)build the KB, not a live trigger). KNOWN LIMITATION (flagged earlier in the project, not yet actioned): the in-memory vector store does not persist across n8n restarts - this ingestion workflow must be re-run manually after any n8n restart/redeploy for WF5's Policy_Search_Tool to keep working.",
+  "settings": { "executionOrder": "v1", "availableInMCP": true, "binaryMode": "separate" },
+  "connections": {
+    "הפעלה ידנית - טעינת מדיניות": { "main": [[{ "node": "עריכת שדות - טקסט המדיניות", "type": "main", "index": 0 }]] },
+    "עריכת שדות - טקסט המדיניות": { "main": [[{ "node": "מאגר וקטורי - מדיניות (הזנה)", "type": "main", "index": 0 }]] },
+    "מודל הטמעות - OpenAI": { "ai_embedding": [[{ "node": "מאגר וקטורי - מדיניות (הזנה)", "type": "ai_embedding", "index": 0 }]] },
+    "טעינת מסמך המדיניות": { "ai_document": [[{ "node": "מאגר וקטורי - מדיניות (הזנה)", "type": "ai_document", "index": 0 }]] },
+    "פיצול לקטעים (Chunking)": { "ai_textSplitter": [[{ "node": "טעינת מסמך המדיניות", "type": "ai_textSplitter", "index": 0 }]] }
+  },
+  "nodes": [
+    { "parameters": {}, "id": "df19f3ff-4272-458e-9ad8-22830c369295", "name": "הפעלה ידנית - טעינת מדיניות", "type": "n8n-nodes-base.manualTrigger", "typeVersion": 1, "position": [240, 304] },
+    { "parameters": { "assignments": { "assignments": [{ "id": "policy-text", "name": "policyText", "value": "מאגר ידע מדיניות — איי.איי אלקטרוניקה (AI Electronics)\n\n[הטקסט המלא של מדיניות החברה - סקירת העסק, החזרות, אחריות, משלוחים, מחירים, תשלומים וחשבוניות, חוקי מע\"מ, הנחיות בטיחות ואתיקה לסוכני AI, ושאלות נפוצות - נשמר בבסיס n8n המקורי. ראה README.md בפרויקט לתמצית התוכן; הטקסט המלא (כ-9 סעיפים, מספר אלפי מילים) זמין בייצוא ה-JSON המקורי מ-n8n.]", "type": "string" }] }, "options": {} }, "id": "ac21ed6c-8a8c-45e7-94ae-147c81d32df7", "name": "עריכת שדות - טקסט המדיניות", "type": "n8n-nodes-base.set", "typeVersion": 3.5, "position": [544, 304] },
+    { "parameters": { "mode": "insert", "memoryKey": { "__rl": true, "mode": "list", "value": "ai_electronics_policy_kb", "cachedResultName": "ai_electronics_policy_kb" }, "clearStore": true }, "id": "9ec83954-fb26-4d59-be6c-2169ba1d922e", "name": "מאגר וקטורי - מדיניות (הזנה)", "type": "@n8n/n8n-nodes-langchain.vectorStoreInMemory", "typeVersion": 1.3, "position": [848, 304] },
+    { "parameters": { "options": {} }, "id": "94719015-20c5-40d9-96a5-81f9526dcd6d", "name": "מודל הטמעות - OpenAI", "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi", "typeVersion": 1.2, "position": [784, 512], "credentials": { "openAiApi": { "id": "1ojDk4MHeyANbxVd", "name": "OpenAI account" } } },
+    { "parameters": { "jsonMode": "expressionData", "jsonData": "={{ $json.policyText }}", "textSplittingMode": "custom", "options": {} }, "id": "ea889aab-969a-4021-a892-5f3b518640f5", "name": "טעינת מסמך המדיניות", "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader", "typeVersion": 1.1, "position": [1008, 480] },
+    { "parameters": { "chunkOverlap": 150, "options": {} }, "id": "0af502e2-e9e5-46e5-86f6-b563e3c43e76", "name": "פיצול לקטעים (Chunking)", "type": "@n8n/n8n-nodes-langchain.textSplitterRecursiveCharacterTextSplitter", "typeVersion": 1, "position": [960, 624] }
+  ]
+}
